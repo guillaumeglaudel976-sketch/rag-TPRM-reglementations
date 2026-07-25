@@ -195,6 +195,37 @@ async function supabaseMatchChunks(queryEmbedding, matchCount = 12) {
   return res.json();
 }
 
+async function supabaseMatchChunksByDoc(queryEmbedding, docName, matchCount = 5) {
+  const res = await fetch(`${window.SUPABASE_URL}/rest/v1/rpc/match_chunks_by_doc`, {
+    method: 'POST',
+    headers: {
+      'apikey': window.SUPABASE_KEY,
+      'Authorization': `Bearer ${window.SUPABASE_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query_embedding: queryEmbedding, target_doc: docName, match_count: matchCount })
+  });
+  if (!res.ok) throw new Error('Supabase match_chunks_by_doc failed for ' + docName + ': ' + (await res.text()));
+  return res.json();
+}
+
+// Ensures every loaded document contributes its own best-matching passages, instead of
+// letting a single global similarity search crowd out documents whose wording is a bit
+// further from the query (even if they hold a relevant requirement).
+async function semanticBroadCoverage(queryEmbedding, maxPerDoc = 5) {
+  const results = [];
+  const okDocs = docs.filter(d => d.status === 'ok');
+  for (const d of okDocs) {
+    try {
+      const matches = await supabaseMatchChunksByDoc(queryEmbedding, d.name, maxPerDoc);
+      matches.forEach(m => results.push({ doc: m.doc_name, chunk: { text: m.content }, score: m.similarity }));
+    } catch (err) {
+      console.warn('Couverture sémantique par document indisponible pour', d.name, err);
+    }
+  }
+  return results;
+}
+
 uploadZone.addEventListener('click', () => fileInput.click());
 uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.style.borderColor = 'var(--accent)'; });
 uploadZone.addEventListener('dragleave', () => { uploadZone.style.borderColor = 'var(--border)'; });
@@ -419,10 +450,13 @@ async function runQuery(query) {
   if (window.embeddingStatus === 'ready') {
     try {
       const queryEmbedding = await window.getEmbedding(query, 'query');
-      const matchCount = isBroad ? 30 : 12;
-      const matches = await supabaseMatchChunks(queryEmbedding, matchCount);
-      relevant = matches.map(m => ({ doc: m.doc_name, chunk: { text: m.content }, score: m.similarity }));
-      usedSemanticSearch = true;
+      if (isBroad) {
+        relevant = await semanticBroadCoverage(queryEmbedding, 5);
+      } else {
+        const matches = await supabaseMatchChunks(queryEmbedding, 12);
+        relevant = matches.map(m => ({ doc: m.doc_name, chunk: { text: m.content }, score: m.similarity }));
+      }
+      usedSemanticSearch = relevant.length > 0;
     } catch (err) {
       console.warn('Recherche sémantique Supabase indisponible pour cette requête, repli sur mots-clés.', err);
     }
