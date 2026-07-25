@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>RAG Réglementations Cybersécurité</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  window.SUPABASE_URL = 'https://dyjwdjcmuhgfhfdcmxnx.supabase.co';
+  window.SUPABASE_KEY = 'sb_publishable_hCcfbcGupPCIu-6rVEGULA_j6x4vB2J';
+  window.embeddingStatus = 'ready'; // embeddings now go through a Supabase Edge Function (CORS-safe)
+
+  window.getEmbedding = async function(text, inputType = 'document') {
+    const res = await fetch(`${window.SUPABASE_URL}/functions/v1/embed`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${window.SUPABASE_KEY}`,
+        'apikey': window.SUPABASE_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ text: text, input_type: inputType })
+    });
+    if (!res.ok) throw new Error('Edge function embed failed: ' + (await res.text()));
+    const data = await res.json();
+    return data.embedding;
+  };
+</script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #4a9eff;
+    --accent-dim: #1f3a5a;
+    --ok: #3fb950;
+    --warn: #d29922;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: 'SF Mono', 'Consolas', 'Menlo', monospace;
+    font-size: 13px; height: 100vh; display: flex; flex-direction: column;
+  }
+  header {
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: 0.02em; }
+  header .sub { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .layout { flex: 1; display: flex; overflow: hidden; }
+  .sidebar {
+    width: 280px; border-right: 1px solid var(--border);
+    padding: 16px; overflow-y: auto; background: var(--panel);
+  }
+  .sidebar h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 10px; }
+  .upload-zone {
+    border: 1px dashed var(--border); border-radius: 6px; padding: 16px;
+    text-align: center; cursor: pointer; color: var(--muted); font-size: 12px;
+    transition: border-color 0.15s;
+  }
+  .upload-zone:hover { border-color: var(--accent); color: var(--text); }
+  .doc-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; margin-top: 8px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 5px; font-size: 12px;
+  }
+  .doc-item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 190px; }
+  .doc-item .status { font-size: 10px; }
+  .status.ok { color: var(--ok); }
+  .status.pending { color: var(--warn); }
+  .del-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; }
+  .del-btn:hover { color: #f85149; }
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .presets { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; }
+  .preset-btn {
+    background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent);
+    padding: 6px 12px; border-radius: 5px; font-size: 11px; cursor: pointer; font-family: inherit;
+  }
+  .preset-btn:hover { background: var(--accent); color: #fff; }
+  .chat { flex: 1; overflow-y: auto; padding: 20px; }
+  .msg { margin-bottom: 20px; max-width: 900px; }
+  .msg.user { color: var(--accent); }
+  .msg .role { font-size: 10px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; letter-spacing: 0.06em; }
+  .msg .content { white-space: pre-wrap; line-height: 1.6; }
+  .msg.assistant .content table { border-collapse: collapse; margin: 10px 0; width: 100%; }
+  .msg.assistant .content th, .msg.assistant .content td { border: 1px solid var(--border); padding: 6px 10px; font-size: 12px; text-align: left; }
+  .msg.assistant .content th { background: var(--panel); }
+  .sources { font-size: 10px; color: var(--muted); margin-top: 6px; }
+  .input-bar { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+  .input-bar input {
+    flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 10px 14px; border-radius: 6px; font-family: inherit; font-size: 13px;
+  }
+  .input-bar input:focus { outline: none; border-color: var(--accent); }
+  .input-bar button {
+    background: var(--accent); border: none; color: #fff; padding: 10px 18px;
+    border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 600;
+  }
+  .input-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .empty-state { color: var(--muted); text-align: center; margin-top: 60px; font-size: 12px; line-height: 1.8; }
+  .loading-dot::after { content: '...'; animation: dots 1.2s steps(4, end) infinite; }
+  @keyframes dots { 0%, 20% { content: '.'; } 40% { content: '..'; } 60%, 100% { content: '...'; } }
+  #file-input { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>RAG — Réglementations Cybersécurité</h1>
+    <div class="sub">Extraction, indexation locale et analyse comparative (AI Act, CRA, DORA, NIS2, RGPD, LPM, Solvabilité II, Loi 78-17…)</div>
+  </div>
+  <div class="sub" id="doc-count">0 document chargé</div>
+  <div class="sub" id="embedding-status">Recherche sémantique : initialisation…</div>
+</header>
+
+<div class="layout">
+  <div class="sidebar">
+    <h2>Documents</h2>
+    <div class="upload-zone" id="upload-zone">
+      📄 Cliquer ou glisser vos PDF ici<br>(plusieurs fichiers possibles)
+    </div>
+    <input type="file" id="file-input" accept=".pdf" multiple>
+    <div id="doc-list"></div>
+  </div>
+
+  <div class="main">
+    <div class="presets">
+      <button class="preset-btn" data-q="Fais un tableau récapitulatif de toutes les exigences liées à la gestion des tiers et fournisseurs (due diligence, clauses contractuelles, audit, sous-traitance) dans chaque réglementation chargée.">Tableau exigences tiers/fournisseurs</button>
+      <button class="preset-btn" data-q="Compare les réglementations chargées deux à deux et indique précisément ce que chacune apporte de plus que l'autre sur la cybersécurité.">Comparer les réglementations</button>
+      <button class="preset-btn" data-q="Liste tous les points normatifs (exigences précises, obligations, échéances) présents dans les documents chargés, organisés par réglementation.">Extraire tous les points normatifs</button>
+    </div>
+    <div class="chat" id="chat">
+      <div class="empty-state">Chargez vos PDF réglementaires à gauche, puis posez une question ou utilisez un préréglage ci-dessus.<br>L'extraction et l'indexation se font entièrement dans votre navigateur.</div>
+    </div>
+    <div class="input-bar">
+      <input type="text" id="query-input" placeholder="Ex : quelles sont les exigences DORA sur la sous-traitance TIC critique ?">
+      <button id="send-btn">Envoyer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let docs = []; // { name, text, chunks: [{id, text}] }
+const docListEl = document.getElementById('doc-list');
+const docCountEl = document.getElementById('doc-count');
+const embeddingStatusEl = document.getElementById('embedding-status');
+const chatEl = document.getElementById('chat');
+const uploadZone = document.getElementById('upload-zone');
+const fileInput = document.getElementById('file-input');
+
+function updateEmbeddingStatusUI() {
+  if (window.embeddingStatus === 'ready') {
+    embeddingStatusEl.textContent = 'Recherche sémantique : active (Voyage AI + Supabase)';
+    embeddingStatusEl.style.color = 'var(--ok)';
+  } else if (window.embeddingStatus === 'unavailable') {
+    embeddingStatusEl.textContent = 'Recherche sémantique indisponible — repli sur mots-clés';
+    embeddingStatusEl.style.color = 'var(--warn)';
+  } else {
+    embeddingStatusEl.textContent = 'Recherche sémantique : initialisation…';
+  }
+}
+document.addEventListener('embedding-status-change', updateEmbeddingStatusUI);
+updateEmbeddingStatusUI();
+
+// --- Supabase helpers ---
+async function supabaseInsertChunks(rows) {
+  const res = await fetch(`${window.SUPABASE_URL}/rest/v1/document_chunks`, {
+    method: 'POST',
+    headers: {
+      'apikey': window.SUPABASE_KEY,
+      'Authorization': `Bearer ${window.SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal'
+    },
+    body: JSON.stringify(rows)
+  });
+  if (!res.ok) throw new Error('Supabase insert failed: ' + (await res.text()));
+}
+
+async function supabaseMatchChunks(queryEmbedding, matchCount = 12) {
+  const res = await fetch(`${window.SUPABASE_URL}/rest/v1/rpc/match_chunks`, {
+    method: 'POST',
+    headers: {
+      'apikey': window.SUPABASE_KEY,
+      'Authorization': `Bearer ${window.SUPABASE_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query_embedding: queryEmbedding, match_count: matchCount })
+  });
+  if (!res.ok) throw new Error('Supabase match_chunks failed: ' + (await res.text()));
+  return res.json();
+}
+
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.style.borderColor = 'var(--accent)'; });
+uploadZone.addEventListener('dragleave', () => { uploadZone.style.borderColor = 'var(--border)'; });
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.style.borderColor = 'var(--border)';
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+async function handleFiles(fileList) {
+  for (const file of fileList) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) continue;
+    const docEntry = { name: file.name, text: '', chunks: [], status: 'pending' };
+    docs.push(docEntry);
+    renderDocList();
+    try {
+      const text = await extractPdfText(file);
+      docEntry.text = text;
+      docEntry.chunks = chunkText(text, docEntry.name);
+      docEntry.status = 'ok';
+      // persist locally (best-effort, not critical to flow)
+      try {
+        await window.storage.set('doc:' + file.name, JSON.stringify({ name: file.name, text }), false);
+      } catch (e) { /* storage best-effort */ }
+
+      // push chunks to Supabase (with embeddings if the model is ready — otherwise
+      // rows are still stored with a null embedding, and the tool relies on the local
+      // keyword fallback for retrieval instead)
+      try {
+        const rows = [];
+        let embedFailed = false;
+        for (const c of docEntry.chunks) {
+          try {
+            const emb = await window.getEmbedding(c.text, 'document');
+            rows.push({ doc_name: docEntry.name, content: c.text, embedding: emb });
+          } catch (embErr) {
+            embedFailed = true;
+            console.warn('[DIAGNOSTIC] Appel embedding (Edge Function) a échoué:', embErr.message || embErr);
+            rows.push({ doc_name: docEntry.name, content: c.text, embedding: null });
+          }
+        }
+        if (embedFailed) {
+          window.embeddingStatus = 'unavailable';
+          updateEmbeddingStatusUI();
+        }
+        try {
+          for (let i = 0; i < rows.length; i += 20) {
+            await supabaseInsertChunks(rows.slice(i, i + 20));
+          }
+          console.info('[DIAGNOSTIC] Insertion Supabase réussie pour', file.name);
+        } catch (insertErr) {
+          console.warn('[DIAGNOSTIC] Insertion Supabase (table document_chunks) a échoué:', insertErr.message || insertErr);
+        }
+      } catch (supaErr) {
+        console.warn('Erreur inattendue pour', file.name, supaErr);
+      }
+    } catch (err) {
+      docEntry.status = 'error';
+      console.error('Extraction error for', file.name, err);
+    }
+    renderDocList();
+  }
+}
+
+async function extractPdfText(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let fullText = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items.map(it => it.str).join(' ');
+    fullText += `\n\n[Page ${i}]\n` + pageText;
+  }
+  return fullText;
+}
+
+function chunkText(text, docName) {
+  const chunkSize = 1500;
+  const overlap = 200;
+  const chunks = [];
+  let i = 0;
+  let idx = 0;
+  while (i < text.length) {
+    const chunkStr = text.slice(i, i + chunkSize);
+    chunks.push({ id: docName + '#' + idx, text: chunkStr });
+    i += (chunkSize - overlap);
+    idx++;
+  }
+  return chunks;
+}
+
+function renderDocList() {
+  docListEl.innerHTML = '';
+  docs.forEach((d, i) => {
+    const div = document.createElement('div');
+    div.className = 'doc-item';
+    const statusLabel = d.status === 'ok' ? '● indexé' : d.status === 'pending' ? '● lecture' : '● erreur';
+    const statusClass = d.status === 'ok' ? 'ok' : 'pending';
+    div.innerHTML = `<span class="name" title="${d.name}">${d.name}</span><span class="status ${statusClass}">${statusLabel}</span><button class="del-btn" data-idx="${i}">✕</button>`;
+    docListEl.appendChild(div);
+  });
+  docCountEl.textContent = `${docs.filter(d => d.status === 'ok').length} document(s) indexé(s)`;
+  docListEl.querySelectorAll('.del-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      docs.splice(parseInt(btn.dataset.idx), 1);
+      renderDocList();
+    });
+  });
+}
+
+// Simple keyword-based retrieval across all chunks of all docs
+function retrieveRelevantChunks(query, maxChunks = 18) {
+  const queryTerms = query.toLowerCase().split(/\W+/).filter(t => t.length > 2);
+  const scored = [];
+  docs.forEach(d => {
+    if (d.status !== 'ok') return;
+    d.chunks.forEach(c => {
+      const lower = c.text.toLowerCase();
+      let score = 0;
+      queryTerms.forEach(t => {
+        const matches = lower.split(t).length - 1;
+        score += matches;
+      });
+      if (score > 0) scored.push({ doc: d.name, chunk: c, score });
+    });
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, maxChunks);
+}
+
+// Synonyms for common regulatory concepts, so broad queries don't miss relevant passages
+// phrased differently than the user's own words (e.g. "tiers" vs "sous-traitant" vs "prestataire")
+const SYNONYM_GROUPS = [
+  ['tiers', 'fournisseur', 'fournisseurs', 'sous-traitant', 'sous-traitance', 'prestataire', 'prestataires', 'third', 'party', 'vendor', 'supplier', 'outsourc'],
+  ['audit', 'contrôle', 'inspection', 'vérification'],
+  ['contrat', 'contractuel', 'clause', 'clauses'],
+  ['incident', 'notification', 'signalement', 'breach'],
+  ['gouvernance', 'pilotage', 'responsabilité', 'organe de direction'],
+];
+
+function expandQueryTerms(query) {
+  const base = query.toLowerCase().split(/\W+/).filter(t => t.length > 2);
+  const expanded = new Set(base);
+  base.forEach(term => {
+    SYNONYM_GROUPS.forEach(group => {
+      if (group.some(g => term.includes(g) || g.includes(term))) {
+        group.forEach(g => expanded.add(g));
+      }
+    });
+  });
+  return [...expanded];
+}
+
+// For broad synthesis queries (comparisons, full extraction), score every chunk of every
+// document by relevance to the (expanded) query, then keep the top N per document — this
+// guarantees every document contributes, and contributes its most relevant passages rather
+// than just whichever happened to come first in the file.
+function retrieveBroadCoverage(query, maxPerDoc = 8) {
+  const terms = expandQueryTerms(query);
+  const results = [];
+  docs.forEach(d => {
+    if (d.status !== 'ok') return;
+    const scored = d.chunks.map(c => {
+      const lower = c.text.toLowerCase();
+      let score = 0;
+      terms.forEach(t => { score += lower.split(t).length - 1; });
+      return { doc: d.name, chunk: c, score };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    // keep top matches for this doc; if nothing scored (rare), still keep its first chunk
+    // so the document isn't silently dropped from a "compare all" style answer
+    const top = scored.filter(s => s.score > 0).slice(0, maxPerDoc);
+    results.push(...(top.length ? top : [scored[0]]));
+  });
+  return results;
+}
+
+function addMessage(role, content) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = `<div class="role">${role === 'user' ? 'Vous' : 'Analyse'}</div><div class="content">${content}</div>`;
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return div;
+}
+
+const sendBtn = document.getElementById('send-btn');
+const queryInput = document.getElementById('query-input');
+
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => runQuery(btn.dataset.q));
+});
+sendBtn.addEventListener('click', () => {
+  const q = queryInput.value.trim();
+  if (q) { runQuery(q); queryInput.value = ''; }
+});
+queryInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') sendBtn.click();
+});
+
+async function runQuery(query) {
+  const emptyState = chatEl.querySelector('.empty-state');
+  if (emptyState) emptyState.remove();
+
+  if (docs.filter(d => d.status === 'ok').length === 0) {
+    addMessage('assistant', "Aucun document indexé pour l'instant — chargez au moins un PDF à gauche avant de lancer une analyse.");
+    return;
+  }
+
+  addMessage('user', query);
+  sendBtn.disabled = true;
+  const loadingMsg = addMessage('assistant', 'Recherche dans les documents et rédaction<span class="loading-dot"></span>');
+
+  // Broad queries (comparisons, full extraction, tables) need coverage across ALL docs, not just top matches
+  const isBroad = /compare|tableau|liste tous|tous les points|récapitulatif/i.test(query);
+
+  let relevant = [];
+  let usedSemanticSearch = false;
+
+  if (window.embeddingStatus === 'ready') {
+    try {
+      const queryEmbedding = await window.getEmbedding(query, 'query');
+      const matchCount = isBroad ? 30 : 12;
+      const matches = await supabaseMatchChunks(queryEmbedding, matchCount);
+      relevant = matches.map(m => ({ doc: m.doc_name, chunk: { text: m.content }, score: m.similarity }));
+      usedSemanticSearch = true;
+    } catch (err) {
+      console.warn('Recherche sémantique Supabase indisponible pour cette requête, repli sur mots-clés.', err);
+    }
+  }
+
+  if (!usedSemanticSearch) {
+    relevant = isBroad ? retrieveBroadCoverage(query, 8) : retrieveRelevantChunks(query);
+  }
+
+  if (relevant.length === 0) {
+    loadingMsg.querySelector('.content').innerHTML = "Aucun passage pertinent trouvé dans les documents chargés pour cette question.";
+    sendBtn.disabled = false;
+    return;
+  }
+
+  const context = relevant.map(r => `--- Extrait de ${r.doc} ---\n${r.chunk.text}`).join('\n\n');
+  const sourceDocs = [...new Set(relevant.map(r => r.doc))];
+
+  const systemPrompt = `Tu es un assistant d'analyse réglementaire en cybersécurité pour un professionnel du TPRM (Third-Party Risk Management) dans une banque. Tu réponds en français, de façon précise et structurée (utilise des tableaux HTML <table> quand c'est pertinent pour comparer des réglementations). Base-toi UNIQUEMENT sur les extraits de documents fournis. Si une information n'est pas dans les extraits, dis-le clairement plutôt que d'inventer. Cite le nom du document source pour chaque exigence mentionnée.`;
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [
+          { role: "user", content: `Extraits de documents réglementaires disponibles :\n\n${context}\n\n---\n\nQuestion : ${query}` }
+        ]
+      })
+    });
+    const data = await response.json();
+    const textBlocks = data.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    loadingMsg.querySelector('.content').innerHTML = textBlocks.replace(/\n/g, '<br>');
+    const srcDiv = document.createElement('div');
+    srcDiv.className = 'sources';
+    srcDiv.textContent = 'Sources consultées : ' + sourceDocs.join(', ');
+    loadingMsg.appendChild(srcDiv);
+  } catch (err) {
+    loadingMsg.querySelector('.content').textContent = "Erreur lors de l'appel à l'analyse : " + err.message;
+  }
+  sendBtn.disabled = false;
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+</script>
+</body>
+</html>
