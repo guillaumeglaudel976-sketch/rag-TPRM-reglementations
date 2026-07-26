@@ -122,7 +122,6 @@
       📄 Cliquer ou glisser vos PDF ici<br>(plusieurs fichiers possibles)
     </div>
     <button class="preset-btn" id="reload-btn" style="width:100%; margin-top:10px;">↻ Recharger depuis Supabase</button>
-    <button id="load-existing-btn" class="preset-btn" style="width:100%; margin-top:10px; padding:8px;">↻ Charger les documents déjà indexés</button>
     <input type="file" id="file-input" accept=".pdf" multiple>
     <div id="doc-list"></div>
   </div>
@@ -269,48 +268,8 @@ uploadZone.addEventListener('drop', e => {
 fileInput.addEventListener('change', e => handleFiles(e.target.files));
 document.getElementById('reload-btn').addEventListener('click', loadDocsFromSupabase);
 
-async function loadExistingDocuments() {
-  try {
-    const res = await fetch(`${window.SUPABASE_URL}/rest/v1/document_chunks?select=doc_name`, {
-      headers: {
-        'apikey': window.SUPABASE_KEY,
-        'Authorization': `Bearer ${window.SUPABASE_KEY}`
-      }
-    });
-    if (!res.ok) throw new Error('Failed to list existing documents: ' + (await res.text()));
-    const rows = await res.json();
-    const uniqueNames = [...new Set(rows.map(r => r.doc_name))];
-    let added = 0;
-    uniqueNames.forEach(name => {
-      if (!docs.some(d => d.name === name)) {
-        // chunks stay empty locally — retrieval for these relies on Supabase (semantic
-        // search) rather than on locally-held text, since we didn't re-extract the PDF
-        docs.push({ name: name, text: '', chunks: [], status: 'ok' });
-        added++;
-      }
-    });
-    renderDocList();
-    return added;
-  } catch (err) {
-    console.error('Erreur lors du chargement des documents existants:', err);
-    throw err;
-  }
-}
 
-document.getElementById('load-existing-btn').addEventListener('click', async () => {
-  const btn = document.getElementById('load-existing-btn');
-  btn.textContent = 'Chargement…';
-  try {
-    const added = await loadExistingDocuments();
-    btn.textContent = '↻ Charger les documents déjà indexés';
-    if (added === 0) {
-      addMessage('assistant', "Aucun nouveau document trouvé dans Supabase (ou ils sont déjà listés ci-contre).");
-    }
-  } catch (err) {
-    btn.textContent = '↻ Charger les documents déjà indexés';
-    addMessage('assistant', "Impossible de charger la liste des documents depuis Supabase : " + err.message);
-  }
-});
+async function handleFiles(fileList) {
   for (const file of fileList) {
     if (!file.name.toLowerCase().endsWith('.pdf')) continue;
     const docEntry = { name: file.name, text: '', chunks: [], status: 'pending' };
@@ -364,6 +323,7 @@ document.getElementById('load-existing-btn').addEventListener('click', async () 
     renderDocList();
   }
 }
+
 
 async function extractPdfText(file) {
   const arrayBuffer = await file.arrayBuffer();
