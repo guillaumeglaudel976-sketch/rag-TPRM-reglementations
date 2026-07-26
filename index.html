@@ -421,9 +421,14 @@ function expandQueryTerms(query) {
 // from PDF extraction or from a Supabase reload), so nothing gets silently dropped.
 function retrieveExhaustiveCoverage() {
   const results = [];
+  const seenTexts = new Set(); // guards against duplicate chunks accumulated from repeated uploads
   docs.forEach(d => {
     if (d.status !== 'ok') return;
-    d.chunks.forEach(c => results.push({ doc: d.name, chunk: c }));
+    d.chunks.forEach(c => {
+      if (seenTexts.has(c.text)) return;
+      seenTexts.add(c.text);
+      results.push({ doc: d.name, chunk: c });
+    });
   });
   return results;
 }
@@ -523,6 +528,15 @@ async function runQuery(query) {
   }
 
   const context = relevant.map(r => `--- Extrait de ${r.doc} ---\n${r.chunk.text}`).join('\n\n');
+  // Rough safety check (~4 chars/token): warn instead of letting the API call fail opaquely
+  // if duplicated or unusually large content pushes the request past a sane budget.
+  const estimatedTokens = Math.round(context.length / 4);
+  if (estimatedTokens > 700000) {
+    loadingMsg.querySelector('.content').innerHTML =
+      `Le contexte sélectionné est anormalement volumineux (~${estimatedTokens.toLocaleString('fr-FR')} tokens estimés) — probablement des chunks dupliqués dans Supabase suite à des rechargements répétés. Videz la table <code>document_chunks</code> (SQL : <code>truncate table document_chunks;</code>) puis rechargez vos documents une seule fois avant de relancer cette question.`;
+    sendBtn.disabled = false;
+    return;
+  }
   const sourceDocs = [...new Set(relevant.map(r => r.doc))];
 
   const systemPrompt = `Tu es un assistant d'analyse réglementaire en cybersécurité spécialisé dans les sujets de gestion des tiers (Third-Party Risk Management). Tu réponds en français, de façon précise et structurée (utilise des tableaux HTML <table> quand c'est pertinent pour comparer des réglementations). Base-toi UNIQUEMENT sur les extraits de documents fournis. Concentre-toi sur l'ensemble des points réglementaires traitant des tiers/fournisseurs/sous-traitants, quel que soit le secteur d'application de la réglementation (ne filtre pas ni ne limite ton analyse au seul secteur bancaire). Si une information n'est pas dans les extraits, dis-le clairement plutôt que d'inventer. Cite le nom du document source pour chaque exigence mentionnée.`;
