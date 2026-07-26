@@ -170,16 +170,24 @@ updateEmbeddingStatusUI();
 // --- Supabase helpers ---
 async function loadDocsFromSupabase() {
   try {
-    const res = await fetch(`${window.SUPABASE_URL}/rest/v1/document_chunks?select=doc_name,content&order=id.asc`, {
-      headers: {
-        'apikey': window.SUPABASE_KEY,
-        'Authorization': `Bearer ${window.SUPABASE_KEY}`
-      }
-    });
-    if (!res.ok) throw new Error('Lecture Supabase impossible: ' + (await res.text()));
-    const rows = await res.json();
+    const pageSize = 1000;
+    let allRows = [];
+    let offset = 0;
+    while (true) {
+      const res = await fetch(`${window.SUPABASE_URL}/rest/v1/document_chunks?select=doc_name,content&order=id.asc&offset=${offset}&limit=${pageSize}`, {
+        headers: {
+          'apikey': window.SUPABASE_KEY,
+          'Authorization': `Bearer ${window.SUPABASE_KEY}`
+        }
+      });
+      if (!res.ok) throw new Error('Lecture Supabase impossible: ' + (await res.text()));
+      const page = await res.json();
+      allRows = allRows.concat(page);
+      if (page.length < pageSize) break; // last page reached
+      offset += pageSize;
+    }
     const byDoc = {};
-    rows.forEach(r => {
+    allRows.forEach(r => {
       if (!byDoc[r.doc_name]) byDoc[r.doc_name] = [];
       byDoc[r.doc_name].push({ id: r.doc_name + '#' + byDoc[r.doc_name].length, text: r.content });
     });
