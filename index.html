@@ -415,7 +415,18 @@ function expandQueryTerms(query) {
   return [...expanded];
 }
 
-// For broad synthesis queries (comparisons, full extraction), score every chunk of every
+// For genuinely exhaustive requests ("liste complète", "chaque exigence"...), similarity
+// ranking is the wrong tool — it would still cut documents down to their "best" passages.
+// Instead, use every chunk already held locally for each loaded document (populated either
+// from PDF extraction or from a Supabase reload), so nothing gets silently dropped.
+function retrieveExhaustiveCoverage() {
+  const results = [];
+  docs.forEach(d => {
+    if (d.status !== 'ok') return;
+    d.chunks.forEach(c => results.push({ doc: d.name, chunk: c }));
+  });
+  return results;
+}
 // document by relevance to the (expanded) query, then keep the top N per document — this
 // guarantees every document contributes, and contributes its most relevant passages rather
 // than just whichever happened to come first in the file.
@@ -477,11 +488,16 @@ async function runQuery(query) {
 
   // Broad queries (comparisons, full extraction, tables) need coverage across ALL docs, not just top matches
   const isBroad = /compare|tableau|liste tous|tous les points|récapitulatif/i.test(query);
+  // Truly exhaustive requests need every chunk, not a similarity-ranked subset
+  const isExhaustive = /complète et exhaustive|liste complète|chaque exigence|omets aucune|n'omets|exhaustif/i.test(query);
 
   let relevant = [];
   let usedSemanticSearch = false;
 
-  if (window.embeddingStatus === 'ready') {
+  if (isExhaustive) {
+    relevant = retrieveExhaustiveCoverage();
+    usedSemanticSearch = relevant.length > 0;
+  } else if (window.embeddingStatus === 'ready') {
     try {
       const queryEmbedding = await window.getEmbedding(query, 'query');
       if (isBroad) {
