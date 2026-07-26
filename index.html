@@ -198,6 +198,8 @@ async function loadDocsFromSupabase() {
 // Auto-load previously indexed documents on startup, so the person doesn't need to
 // re-upload PDFs that are already stored in Supabase from an earlier session.
 loadDocsFromSupabase();
+
+async function supabaseInsertChunks(rows) {
   const res = await fetch(`${window.SUPABASE_URL}/rest/v1/document_chunks`, {
     method: 'POST',
     headers: {
