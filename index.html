@@ -451,7 +451,7 @@ function addMessage(role, content) {
 const sendBtn = document.getElementById('send-btn');
 const queryInput = document.getElementById('query-input');
 
-document.querySelectorAll('.preset-btn').forEach(btn => {
+document.querySelectorAll('[data-q]').forEach(btn => {
   btn.addEventListener('click', () => runQuery(btn.dataset.q));
 });
 sendBtn.addEventListener('click', () => {
