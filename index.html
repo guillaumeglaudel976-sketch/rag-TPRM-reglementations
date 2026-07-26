@@ -414,24 +414,6 @@ function expandQueryTerms(query) {
   });
   return [...expanded];
 }
-
-// For genuinely exhaustive requests ("liste complète", "chaque exigence"...), similarity
-// ranking is the wrong tool — it would still cut documents down to their "best" passages.
-// Instead, use every chunk already held locally for each loaded document (populated either
-// from PDF extraction or from a Supabase reload), so nothing gets silently dropped.
-function retrieveExhaustiveCoverage() {
-  const results = [];
-  const seenTexts = new Set(); // guards against duplicate chunks accumulated from repeated uploads
-  docs.forEach(d => {
-    if (d.status !== 'ok') return;
-    d.chunks.forEach(c => {
-      if (seenTexts.has(c.text)) return;
-      seenTexts.add(c.text);
-      results.push({ doc: d.name, chunk: c });
-    });
-  });
-  return results;
-}
 // document by relevance to the (expanded) query, then keep the top N per document — this
 // guarantees every document contributes, and contributes its most relevant passages rather
 // than just whichever happened to come first in the file.
@@ -520,7 +502,8 @@ async function runQuery(query) {
   if (isExhaustive) {
     for (const d of okDocs) {
       const docMsg = addMessage('assistant', `${d.name} — analyse en cours<span class="loading-dot"></span>`);
-      const context = d.chunks.map(c => c.text).join('\n\n');
+      const uniqueChunkTexts = [...new Set(d.chunks.map(c => c.text))]; // guards against duplicate rows from repeated uploads
+      const context = uniqueChunkTexts.join('\n\n');
       const estimatedTokens = Math.round(context.length / 4);
       if (estimatedTokens > 700000) {
         docMsg.querySelector('.content').innerHTML = `${d.name} : contexte anormalement volumineux (~${estimatedTokens.toLocaleString('fr-FR')} tokens) — probablement des doublons résiduels dans Supabase pour ce document.`;
